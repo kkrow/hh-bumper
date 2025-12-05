@@ -40,9 +40,6 @@ WORKDIR /app
 # Copy compiled executable from builder stage
 COPY --from=builder /app/hh-bumper /app/hh-bumper
 
-# Copy built static files
-COPY --from=builder /app/dist /app/dist
-
 # Install required dependencies and create user
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
