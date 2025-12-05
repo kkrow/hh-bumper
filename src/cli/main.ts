@@ -1,5 +1,5 @@
-import { commands } from "./commands";
 import { auth } from "@api/auth";
+import { commands } from "./commands";
 
 const usage = `
 Использование:
@@ -13,8 +13,8 @@ export async function runCli() {
   const command = process.argv[2];
 
   if (command !== "auth") {
-    if (!auth.checkTokens()) {
-      console.log("Выполните: bun run index.ts auth");
+    if (!(await auth.checkTokens())) {
+      await commands.auth();
       return;
     }
   }
