@@ -1,0 +1,11 @@
+services:
+  hh-bumper:
+    image: kkrow/hh-bumper:latest
+    container_name: hh-bumper
+    restart: unless-stopped
+    ports:
+      - "52888:52888"
+    env_file:
+      - ./.env
+    volumes:
+      - ./tokens.json:/app/tokens.json
