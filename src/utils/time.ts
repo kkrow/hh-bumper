@@ -1,12 +1,22 @@
+type DelayInfo = {
+  delay: number;
+  hours: number;
+  minutes: number;
+  canPublishAt: Date;
+};
+
 // Вычисляет задержку до возможности поднятия резюме
-export const getDelayUntilPublish = (updatedAt: string): number => {
+export const getDelayUntilPublish = (updatedAt: string): DelayInfo => {
   const updated = new Date(updatedAt);
-  const canPublishAt = new Date(updated.getTime() + 4 * 60 * 60 * 1000); // +4 часа
+  const canPublishAt = new Date(updated.getTime() + 4 * 60 * 60 * 1000 + 1000); // +4 часа и одна секунда
   const now = new Date();
 
   const delay = canPublishAt.getTime() - now.getTime();
 
-  return delay > 0 ? delay : 0;
+  const hours = Math.floor(delay / (1000 * 60 * 60));
+  const minutes = Math.floor((delay % (1000 * 60 * 60)) / (1000 * 60));
+
+  return { delay: delay > 0 ? delay : 0, hours, minutes, canPublishAt };
 };
 
 // Ожидание с таймером

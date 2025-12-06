@@ -1,11 +1,11 @@
-import { tokenStorage } from "@storage/token-storage";
-import { getDelayUntilPublish, sleep } from "@utils/time";
 import { auth } from "@api/auth";
-import { resumesApi } from "@api/resumes";
 import type {
   ResumesMineItem,
   ResumesMineResponse,
 } from "@api/orval/api.schemas";
+import { resumesApi } from "@api/resumes";
+import { tokenStorage } from "@storage/token-storage";
+import { getDelayUntilPublish, sleep } from "@utils/time";
 
 export const resumesService = {
   // Получение списка резюме
@@ -35,17 +35,18 @@ export const resumesService = {
 
   // Поднятие резюме
   publish: async (resume: ResumesMineItem): Promise<boolean | null> => {
-    const delay = getDelayUntilPublish(resume.updated_at);
+    const { delay, hours, minutes, canPublishAt } = getDelayUntilPublish(
+      resume.updated_at,
+    );
     if (delay > 0) {
-      const hours = Math.floor(delay / (1000 * 60 * 60));
-      const minutes = Math.floor((delay % (1000 * 60 * 60)) / (1000 * 60));
       console.log(
-        `⏳ Резюме ${resume.id}: ожидаем ${hours}ч ${minutes}мин до поднятия`,
+        `⏳ Резюме ${resume.title}: ожидаем ${hours}ч ${minutes}мин до поднятия
+⏰ Следующее поднятие ${canPublishAt.toLocaleString("ru")}`,
       );
 
       await sleep(delay);
     } else {
-      console.log(`✅ Резюме ${resume.id}: готово к поднятию`);
+      console.log(`✅ Резюме ${resume.title}: готово к поднятию`);
     }
 
     const accessToken = await tokenStorage.accessToken();
@@ -64,7 +65,8 @@ export const resumesService = {
 
       if (response.status === 429) {
         console.log(
-          `⏳ Резюме ${resume.title}: ${JSON.stringify(response.data.errors)}`,
+          `⏳ Ошибка при поднятии резюме ${resume.title}
+${JSON.stringify(response.data.errors)}`,
         );
         return false;
       }
@@ -75,7 +77,7 @@ export const resumesService = {
         return resumesService.publish(resume); // Повторная попытка
       }
 
-      const error = response.data.errors;
+      const error = response.data?.errors;
       console.error(`Ошибка при поднятии резюме ${resume.title}:`, error);
       return false;
     } catch (error) {
@@ -106,7 +108,7 @@ export const resumesService = {
 
   // Запуск демона для автоматического поднятия резюме
   startDaemon: async () => {
-    console.log("Демон запущен!");
+    console.log("✅ Демон запущен!");
     while (true) {
       await resumesService.publishAll();
     }

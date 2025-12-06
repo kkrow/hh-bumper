@@ -24,5 +24,9 @@ export const customFetch = async <T>(
     return {} as T;
   }
   // @ts-expect-error need to fix
-  return { data: await response.json(), status: response.status };
+  return {
+    data: await response.json(),
+    status: response.status,
+    headers: response.headers,
+  };
 };
