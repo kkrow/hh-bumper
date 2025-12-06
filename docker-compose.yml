@@ -1,6 +1,6 @@
 services:
   hh-bumper:
-    image: hh-bumper
+    image: kkrow/hh-bumper:latest
     container_name: hh-bumper
     restart: unless-stopped
     ports:
