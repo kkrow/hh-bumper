@@ -1,6 +1,6 @@
 services:
   hh-bumper:
-    image: kkrow/hh-bumper:latest
+    image: hh-bumper
     container_name: hh-bumper
     restart: unless-stopped
     ports:
@@ -9,3 +9,4 @@ services:
       - ./.env
     volumes:
       - ./tokens.json:/app/tokens.json
+      - /etc/localtime:/etc/localtime:ro

@@ -1,33 +1,24 @@
 # Dockerfile for hh-bumper with multi-stage build
 ARG BUN_VERSION=1.3.3
-ARG TARGETARCH
-ARG BUILDPLATFORM
-ARG TARGETPLATFORM
 
-# Stage 1: Build dependencies and compile
-FROM oven/bun:${BUN_VERSION}-slim AS builder
+# Stage 1: Build dependencies and compile (need to upgrade to distroless later when 1.3-distroless release)
+FROM oven/bun:${BUN_VERSION}-alpine AS builder
 
-WORKDIR /app
+WORKDIR /build
 
-# Copy dependency files
+# Copy dependency files first for better layer caching
 COPY package.json bun.lock* ./
 
 # Install dependencies
-RUN bun install --frozen-lockfile
+RUN bun install --frozen-lockfile --backend=hardlink
 
-# Copy source code
-COPY . .
+# Copy source code (only what's needed for build)
+COPY tsconfig.json orval.config.ts ./
+COPY index.ts ./
+COPY src/ ./src/
 
 # Compile executable for target architecture
-RUN ARCH=$(uname -m) && \
-    if [ "$ARCH" = "aarch64" ] || [ "$TARGETARCH" = "arm64" ]; then \
-        bun build index.ts --compile --minify --sourcemap --bytecode --outfile hh-bumper --target=bun-linux-arm64-modern; \
-    else \
-        bun build index.ts --compile --minify --sourcemap --bytecode --outfile hh-bumper --target=bun-linux-amd64; \
-    fi
-
-# Stage 2: Final image
-FROM debian:13-slim
+RUN bun build index.ts --production --bytecode --outdir dist
 
 # Metadata
 LABEL org.opencontainers.image.title="HH Bumper" \
@@ -35,30 +26,17 @@ LABEL org.opencontainers.image.title="HH Bumper" \
       org.opencontainers.image.source="https://github.com/kkrow/hh-bumper" \
       org.opencontainers.image.licenses="MIT"
 
+FROM oven/bun:canary-distroless
 WORKDIR /app
 
-# Copy compiled executable from builder stage
-COPY --from=builder /app/hh-bumper /app/hh-bumper
-
-# Install required dependencies and create user
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-        wget \
-        ca-certificates \
-        tzdata && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/* && \
-    groupadd -g 1001 appuser && \
-    useradd -u 1001 -g appuser -s /bin/bash -m appuser && \
-    chown -R appuser:appuser /app
-
-USER appuser
+# Move compiled executable to /app with executable permissions
+COPY --from=builder /build/dist /app
 
 # Expose port
 EXPOSE 52888
 
-# Default environment variables
-ENV NODE_ENV=production
+# Explicitly set stop signal for graceful shutdown
+STOPSIGNAL SIGTERM
 
 # Start the application
-ENTRYPOINT ["/app/hh-bumper", "daemon"]
+ENTRYPOINT ["bun", "run", "index.js", "daemon"]

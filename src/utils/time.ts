@@ -19,6 +19,30 @@ export const getDelayUntilPublish = (updatedAt: string): DelayInfo => {
   return { delay: delay > 0 ? delay : 0, hours, minutes, canPublishAt };
 };
 
-// Ожидание с таймером
-export const sleep = (ms: number) =>
-  new Promise((resolve) => setTimeout(resolve, ms));
+// Ожидание с таймером (с возможностью прерывания)
+export const sleep = (ms: number, abortSignal?: AbortSignal): Promise<void> => {
+  return new Promise((resolve) => {
+    if (ms <= 0) {
+      resolve();
+      return;
+    }
+
+    // Если сигнал уже отменен, сразу завершаем
+    if (abortSignal?.aborted) {
+      resolve();
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      resolve();
+    }, ms);
+
+    // Если передан AbortSignal, слушаем его отмену
+    if (abortSignal) {
+      abortSignal.addEventListener("abort", () => {
+        clearTimeout(timeoutId);
+        resolve();
+      });
+    }
+  });
+};

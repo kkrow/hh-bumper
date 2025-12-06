@@ -5,6 +5,7 @@ import type {
 } from "@api/orval/api.schemas";
 import { resumesApi } from "@api/resumes";
 import { tokenStorage } from "@storage/token-storage";
+import { setupGracefulShutdown } from "@utils/shutdown";
 import { getDelayUntilPublish, sleep } from "@utils/time";
 
 export const resumesService = {
@@ -34,7 +35,11 @@ export const resumesService = {
   },
 
   // Поднятие резюме
-  publish: async (resume: ResumesMineItem): Promise<boolean | null> => {
+  publish: async (
+    resume: ResumesMineItem,
+    shouldStop?: () => boolean,
+    abortSignal?: AbortSignal,
+  ): Promise<boolean | null> => {
     const { delay, hours, minutes, canPublishAt } = getDelayUntilPublish(
       resume.updated_at,
     );
@@ -44,7 +49,12 @@ export const resumesService = {
 ⏰ Следующее поднятие ${canPublishAt.toLocaleString("ru")}`,
       );
 
-      await sleep(delay);
+      // Прерываемое ожидание через AbortSignal (без лишних проверок CPU)
+      await sleep(delay, abortSignal);
+
+      if (abortSignal?.aborted || (shouldStop && shouldStop())) {
+        return null;
+      }
     } else {
       console.log(`✅ Резюме ${resume.title}: готово к поднятию`);
     }
@@ -74,7 +84,7 @@ ${JSON.stringify(response.data.errors)}`,
       if (response.status === 403) {
         console.log("Токен истёк, обновляем...");
         await auth.refreshAccessToken();
-        return resumesService.publish(resume); // Повторная попытка
+        return resumesService.publish(resume, shouldStop, abortSignal); // Повторная попытка
       }
 
       const error = response.data?.errors;
@@ -87,7 +97,7 @@ ${JSON.stringify(response.data.errors)}`,
   },
 
   // Поднятие всех резюме
-  publishAll: async () => {
+  publishAll: async (shouldStop?: () => boolean, abortSignal?: AbortSignal) => {
     const data = await resumesService.getMine();
 
     if (!data || !data.items) {
@@ -95,22 +105,47 @@ ${JSON.stringify(response.data.errors)}`,
       return;
     }
 
+    if (abortSignal?.aborted || (shouldStop && shouldStop())) {
+      return;
+    }
+
     console.log(`🚀 Планируем поднятие ${data.items.length} резюме...\n`);
 
     // Все резюме публикуются параллельно, каждое со своей задержкой
     const results = await Promise.all(
-      data.items.map((resume) => resumesService.publish(resume)),
+      data.items.map((resume) =>
+        resumesService.publish(resume, shouldStop, abortSignal),
+      ),
     );
 
-    console.log("\n✅ Все резюме обработаны!");
+    if (!abortSignal?.aborted && (!shouldStop || !shouldStop())) {
+      console.log("\n✅ Все резюме обработаны!");
+    }
     return results;
   },
 
   // Запуск демона для автоматического поднятия резюме
   startDaemon: async () => {
     console.log("✅ Демон запущен!");
-    while (true) {
-      await resumesService.publishAll();
+
+    const { abortSignal, checkShouldStop } = setupGracefulShutdown();
+
+    try {
+      while (!checkShouldStop()) {
+        await resumesService.publishAll(checkShouldStop, abortSignal);
+
+        // Если получили сигнал завершения, выходим из цикла
+        if (checkShouldStop()) {
+          break;
+        }
+      }
+    } catch (error) {
+      if (!checkShouldStop()) {
+        console.error("Ошибка в демоне:", error);
+      }
     }
+
+    console.log("✅ Демон корректно завершён");
+    process.exit(0);
   },
 };
